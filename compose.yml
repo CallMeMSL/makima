@@ -1,5 +1,6 @@
 services:
   bot:
+    container_name: makima
     build: .
     env_file:
       - .env

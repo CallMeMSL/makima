@@ -33,14 +33,18 @@ async fn help(ctx: Context, msg: Message) -> Result<()> {
               remove index|all\t\tremoves the pattern at that index or all of them\n\
               help\t\tshows this message```",
     )
-    .await?;
+        .await?;
     Ok(())
 }
 
 async fn add(ctx: Context, msg: Message, pat: &str) -> Result<()> {
     let user_id = msg.author.id.get();
     let mut store = get_user_store().write().await;
-    let new_entry = Entry::new(user_id, pat.to_string());
+    let new_entry = Entry::new(user_id,
+                               pat.to_string()
+                                   .split(';')
+                                      .map(|s| s.to_string())
+                                   .collect());
     store.add(new_entry)?;
     drop(store);
     msg.reply(ctx, "pattern added").await?;
@@ -57,7 +61,7 @@ async fn list_patterns(ctx: Context, msg: Message) -> Result<()> {
         user_patterns
             .into_iter()
             .enumerate()
-            .map(|(i, p)| format!("{i}\t\t{p}"))
+            .map(|(i, p)| format!("{i}\t\t{}", p.join("\t")))
             .collect::<Vec<String>>()
             .join("\n")
     );

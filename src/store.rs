@@ -6,12 +6,12 @@ use std::path::PathBuf;
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Entry {
     uid: u64,
-    pat: String,
+    patterns: Vec<String>,
 }
 
 impl Entry {
-    pub fn new(uid: u64, pat: String) -> Self {
-        Entry { uid, pat }
+    pub fn new(uid: u64, patterns: Vec<String>) -> Self {
+        Entry { uid, patterns }
     }
 }
 
@@ -47,11 +47,11 @@ impl UserStore {
         self.save()
     }
 
-    pub fn get_elements_for_user(&self, user: u64) -> Vec<String> {
+    pub fn get_elements_for_user(&self, user: u64) -> Vec<Vec<String>> {
         self.entries
             .iter()
             .filter(|e| e.uid == user)
-            .map(|e| e.pat.clone()) // cow?
+            .map(|e| e.patterns.clone()) // cow?
             .collect()
     }
 
@@ -60,7 +60,7 @@ impl UserStore {
         let elem = binding.get(i).ok_or(anyhow!("Out of bounds"))?;
         let searched_entry = Entry {
             uid: user,
-            pat: elem.clone(),
+            patterns: elem.clone(),
         }; // cow!
         let global_i = self
             .entries
@@ -87,7 +87,7 @@ impl UserStore {
     pub fn get_users_matching(&self, hay: &str) -> Vec<u64> {
         self.entries
             .iter()
-            .filter(|e| hay.contains(&e.pat))
+            .filter(|e| e.patterns.iter().all(|p| hay.contains(p)))
             .map(|e| e.uid)
             .collect()
     }
@@ -103,20 +103,28 @@ mod tests {
             entries: vec![
                 Entry {
                     uid: 1,
-                    pat: "".to_string(),
+                    patterns: vec!["".to_string()],
                 },
                 Entry {
                     uid: 6,
-                    pat: "One ".to_string(),
+                    patterns: vec!["One ".to_string()],
                 },
                 Entry {
-                    uid: 6,
-                    pat: "Naru".to_string(),
+                    uid: 9,
+                    patterns: vec!["Naru".to_string()],
+                },
+                Entry {
+                    uid: 8,
+                    patterns: vec!["O".to_string(), "P".to_string()]
+                },
+                Entry {
+                    uid: 10,
+                    patterns: vec!["One".to_string(), "Love".to_string()]
                 },
             ],
             path: Default::default(),
         };
         let res = us.get_users_matching("One Piece");
-        assert_eq!(res, vec![1, 6])
+        assert_eq!(res, vec![1, 6, 8])
     }
 }
