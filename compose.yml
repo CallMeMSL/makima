@@ -7,3 +7,4 @@ services:
       - STORE_FOLDER_PATH=/home/root/.makima
     volumes:
       - ~/.makima/:/home/root/.makima/
+    restart: always
