@@ -12,9 +12,9 @@ pub async fn eval_entry(mut receiver: Receiver<Vec<RssEntry>>) -> Result<()> {
     loop {
         let entries = receiver.recv().await.ok_or(anyhow!("channel died"))?;
         for entry in entries {
-            notify_users(entry).await?;
             // we dont want to get rate limited when scraping
             tokio::time::sleep(Duration::from_secs(1)).await;
+            notify_users(entry).await?;
         }
     }
 }
