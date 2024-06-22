@@ -27,8 +27,8 @@ async fn notify_users(entry: RssEntry) -> Result<()> {
         let magnet = match entry.get_magnet_for_entry().await {
             Ok(m) => {m}
             Err(e) => {
-                println!("{e}");
-                "on0".to_string()
+                println!("{}", &e);
+                format!("{e}")
             }
         };
         let http: Http = Http::new(&env::var("DISCORD_TOKEN").unwrap());

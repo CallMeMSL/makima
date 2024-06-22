@@ -97,6 +97,7 @@ fn get_magnet_extractor() -> &'static Regex {
 
 impl RssEntry {
     pub async fn get_magnet_for_entry(&self) -> Result<String> {
+        tokio::time::sleep(Duration::from_secs(2)).await;
         let response = reqwest::get(&self.guid).await?;
         let data = response.text().await?;
         let ex = get_magnet_extractor();
