@@ -103,7 +103,7 @@ impl RssEntry {
         let ex = get_magnet_extractor();
         let (_, [link]) = ex
             .captures(&data)
-            .ok_or(anyhow!("no magnet link found in webpage"))?
+            .ok_or(anyhow!("no magnet link found in webpage: {data}"))?
             .extract();
         Ok(link.to_string())
     }
