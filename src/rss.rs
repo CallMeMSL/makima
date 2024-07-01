@@ -100,10 +100,11 @@ impl RssEntry {
     pub async fn get_magnet_for_entry(&self) -> Result<String> {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let response = reqwest::get(&self.guid).await?;
-        let data = response.text().await?;
+        let data = response.bytes().await?;
+        let string = String::from_utf8_lossy(&data);
         let ex = get_magnet_extractor();
         let caps = ex
-            .captures(&data)
+            .captures(&string)
             .ok_or(anyhow!("no magnet link found in webpage: {data}"))/*?
             .extract()*/;
 
@@ -113,7 +114,6 @@ impl RssEntry {
                 Ok(link.to_string())
             }
             Err(_) => {
-                let data = data.as_bytes();
                 let binding = PathBuf::from(env::var("STORE_FOLDER_PATH").unwrap_or("~/.makima".into()));
                 let store_folder = plain_path::plain(
                     &binding
