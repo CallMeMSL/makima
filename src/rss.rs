@@ -7,6 +7,7 @@ use anyhow::{anyhow, bail, Result};
 use regex::Regex;
 use reqwest::IntoUrl;
 use rss::Channel;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;
 
 use crate::setup::load_last_seen;
@@ -94,18 +95,32 @@ fn get_magnet_extractor() -> &'static Regex {
 }
 
 
-
 impl RssEntry {
     pub async fn get_magnet_for_entry(&self) -> Result<String> {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let response = reqwest::get(&self.guid).await?;
         let data = response.text().await?;
         let ex = get_magnet_extractor();
-        let (_, [link]) = ex
+        let caps = ex
             .captures(&data)
-            .ok_or(anyhow!("no magnet link found in webpage: {data}"))?
-            .extract();
-        Ok(link.to_string())
+            .ok_or(anyhow!("no magnet link found in webpage: {data}"))/*?
+            .extract()*/;
+
+        match caps {
+            Ok(res) => {
+                let (_, [link]) = res.extract();
+                Ok(link.to_string())
+            }
+            Err(_) => {
+                let data = data.as_bytes();
+                let store_folder = std::env::var("STORE_FOLDER_PATH")?;
+                let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+                let path = PathBuf::from(format!("{store_folder}/{}-{time}.bin", self.title));
+                let mut file = tokio::fs::File::create(&path).await?;
+                file.write_all(&data).await?;
+                bail!("magnet link not found in webpage, saved to {}", path.display())
+            }
+        }
     }
 }
 
