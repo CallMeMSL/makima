@@ -119,7 +119,7 @@ impl RssEntry {
                     &binding
                 )?;
                 let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                let path = PathBuf::from(format!("{store_folder}/{}-{time}.bin", self.title));
+                let path = PathBuf::from(format!("{}/{}-{time}.bin", store_folder.display(), self.title));
                 let mut file = tokio::fs::File::create(&path).await?;
                 file.write_all(&data).await?;
                 bail!("magnet link not found in webpage, saved to {}", path.display())
