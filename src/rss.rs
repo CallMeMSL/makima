@@ -1,3 +1,4 @@
+use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -113,7 +114,10 @@ impl RssEntry {
             }
             Err(_) => {
                 let data = data.as_bytes();
-                let store_folder = std::env::var("STORE_FOLDER_PATH")?;
+                let binding = PathBuf::from(env::var("STORE_FOLDER_PATH").unwrap_or("~/.makima".into()));
+                let store_folder = plain_path::plain(
+                    &binding
+                )?;
                 let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
                 let path = PathBuf::from(format!("{store_folder}/{}-{time}.bin", self.title));
                 let mut file = tokio::fs::File::create(&path).await?;
