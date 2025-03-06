@@ -1,17 +1,16 @@
-use std::env;
+use std::cmp::Reverse;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Result};
-use regex::Regex;
+use anyhow::{bail, Result};
+use chrono::{DateTime, FixedOffset};
 use reqwest::IntoUrl;
 use rss::Channel;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;
 
 use crate::setup::load_last_seen;
+use crate::torrent::Torrent;
 
 pub async fn poll_rss(
     link: String,
@@ -30,20 +29,20 @@ pub async fn poll_rss(
                 continue;
             }
         };
-        if feed[0].title == latest_element {
+        let mut new_entries: Vec<_> = feed
+            .into_iter()
+            .filter(|item| item.pub_date > latest_element)
+            .collect();
+        if new_entries.is_empty() {
             tokio::time::sleep(timeout).await;
             continue;
         }
-        let new_latest = feed[0].title.clone();
-        let mut new_shows = Vec::new();
-        for item in feed.into_iter() {
-            if item.title == latest_element {
-                break;
-            }
-            new_shows.push(item);
-        }
-        notify_sender.send(new_shows).await.unwrap();
-        write_latest(&store_folder, &new_latest).unwrap();
+        new_entries.sort_by_key(|item| Reverse(item.pub_date));
+
+        let new_latest = new_entries[0].pub_date.clone();
+        notify_sender.send(new_entries).await.unwrap();
+        let latest_string = new_latest.to_rfc2822();
+        write_latest(&store_folder, &latest_string).unwrap();
         latest_element = new_latest;
         tokio::time::sleep(timeout).await;
     }
@@ -63,7 +62,8 @@ fn write_latest(store_folder: impl Into<PathBuf>, latest: &str) -> Result<()> {
 
 pub struct RssEntry {
     pub title: String,
-    pub guid: String,
+    pub link: String,
+    pub pub_date: DateTime<FixedOffset>,
 }
 
 pub async fn load_rss_feed(link: impl IntoUrl) -> Result<Vec<RssEntry>> {
@@ -76,12 +76,22 @@ pub async fn load_rss_feed(link: impl IntoUrl) -> Result<Vec<RssEntry>> {
             continue;
         }
         let title = item.title.unwrap();
-        if item.guid.is_none() {
+        if item.link.is_none() {
             log::error!("item {i}:{title} in rss feed does not have a link");
             continue;
         }
-        let guid = item.guid.unwrap().value;
-        entries.push(RssEntry { title, guid })
+        let link = item.link.unwrap();
+        let pub_date = chrono::DateTime::parse_from_rfc2822(&item.pub_date.unwrap());
+        if pub_date.is_err() {
+            log::error!("item {i}:{title} in rss feed has an invalid publication date");
+            continue;
+        }
+        let pub_date = pub_date?;
+        entries.push(RssEntry {
+            title,
+            link,
+            pub_date,
+        })
     }
     if entries.is_empty() {
         bail!("RSS feed returned no valid items");
@@ -89,42 +99,11 @@ pub async fn load_rss_feed(link: impl IntoUrl) -> Result<Vec<RssEntry>> {
     Ok(entries)
 }
 
-static MAGNET_EXTRACTOR: OnceLock<Regex> = OnceLock::new();
-
-fn get_magnet_extractor() -> &'static Regex {
-    MAGNET_EXTRACTOR.get_or_init(|| Regex::new(r#""(magnet.*)" class="card-footer-item">"#).unwrap())
-}
-
-
 impl RssEntry {
     pub async fn get_magnet_for_entry(&self) -> Result<String> {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let response = reqwest::get(&self.guid).await?;
+        let response = reqwest::get(&self.link).await?;
         let data = response.bytes().await?;
-        let string = String::from_utf8_lossy(&data);
-        let ex = get_magnet_extractor();
-        let caps = ex
-            .captures(&string)
-            .ok_or(anyhow!("no magnet link found in webpage: {string}"))/*?
-            .extract()*/;
-
-        match caps {
-            Ok(res) => {
-                let (_, [link]) = res.extract();
-                Ok(link.to_string())
-            }
-            Err(_) => {
-                let binding = PathBuf::from(env::var("STORE_FOLDER_PATH").unwrap_or("~/.makima".into()));
-                let store_folder = plain_path::plain(
-                    &binding
-                )?;
-                let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                let path = PathBuf::from(format!("{}/{}-{time}.bin", store_folder.display(), self.title));
-                let mut file = tokio::fs::File::create(&path).await?;
-                file.write_all(&data).await?;
-                bail!("magnet link not found in webpage, saved to {}", path.display())
-            }
-        }
+        let torrent = Torrent::from_bytes(&data)?;
+        torrent.create_magnet_link()
     }
 }
-

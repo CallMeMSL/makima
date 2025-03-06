@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::Result;
+use chrono::{DateTime, FixedOffset};
 use tokio::sync::RwLock;
 
 use crate::store::{Entry, UserStore};
@@ -37,17 +38,19 @@ pub fn setup_resources(path: impl AsRef<Path>) -> Result<()> {
 
     if !last_seen.exists() {
         let mut file = File::create(&last_seen)?;
-        file.write_all(b"NEVER RUN")?;
+        let near_past = chrono::Utc::now() - chrono::Duration::hours(4);
+        file.write_all(near_past.to_rfc2822().as_bytes())?;
     }
 
     Ok(())
 }
 
-pub fn load_last_seen(p: impl Into<PathBuf>) -> Result<String> {
+pub fn load_last_seen(p: impl Into<PathBuf>) -> Result<DateTime<FixedOffset>> {
     let mut p = p.into();
     p.push("last.txt");
-    let mut file = File::open(&p).unwrap();
+    let mut file = File::open(&p)?;
     let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    Ok(contents)
+    file.read_to_string(&mut contents)?;
+    let pub_date = chrono::DateTime::parse_from_rfc2822(&contents)?;
+    Ok(pub_date)
 }
